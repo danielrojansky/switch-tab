@@ -2,7 +2,7 @@
 
 Windows-style window switcher for macOS, with always-on-top windows. Hold Option, press Tab, see every open window with a live preview, release Option to jump to it. Inspired by [AltTab](https://alt-tab.app/).
 
-Version 0.4.0. Requires macOS 14 or later.
+Version 0.4.1. Requires macOS 14 or later.
 
 ## Features
 
@@ -107,6 +107,18 @@ Grant both in System Settings, Privacy & Security. Thanks to the local signing c
 - macOS shows its screen recording indicator while a window is pinned.
 - Windows on other Spaces are found by a background scan every few seconds, so a brand new window there can take a moment to appear.
 - Uses undocumented macOS calls, so a future macOS release could break parts of it.
+
+## Roadmap
+
+- Drag and drop onto windows, free-form key recorder, more shortcuts
+- Translations, VoiceOver, auto-update
+- Optional upload of aggregate statistics (explicit opt-in, not built)
+
+## Documentation
+
+- [CHANGELOG.md](CHANGELOG.md): version history
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): flow, always-on-top design, stats, signing
+- [CLAUDE.md](CLAUDE.md): project guide for contributors and AI assistants
 
 ## Alternatives considered
 
