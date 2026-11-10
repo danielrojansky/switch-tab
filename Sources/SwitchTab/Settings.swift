@@ -60,6 +60,8 @@ final class Settings: ObservableObject {
     @Published var animations: Bool = Settings.load("animations", true) { didSet { save(animations, "animations") } }
     @Published var glow: Bool = Settings.load("glow", true) { didSet { save(glow, "glow") } }
 
+    @Published var showDockBadges: Bool = Settings.load("showDockBadges", true) { didSet { save(showDockBadges, "showDockBadges") } }
+
     // Which windows to show
     @Published var allSpaces: Bool = Settings.load("allSpaces", true) { didSet { save(allSpaces, "allSpaces") } }
     @Published var showMinimized: Bool = Settings.load("showMinimized", true) { didSet { save(showMinimized, "showMinimized") } }

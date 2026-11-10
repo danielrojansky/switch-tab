@@ -2,7 +2,7 @@
 
 Windows-style window switcher for macOS, with always-on-top windows. Hold Option, press Tab, see every open window with a live preview, release Option to jump to it. Inspired by [AltTab](https://alt-tab.app/).
 
-Version 0.2.0. Requires macOS 14 or later.
+Version 0.3.0. Requires macOS 14 or later.
 
 ## Features
 
@@ -15,7 +15,7 @@ Version 0.2.0. Requires macOS 14 or later.
 | Three styles | Thumbnails, App Icons, Titles, each in Small, Medium, Large |
 | Effects | Blurred glass panel, spring pop-in, cascading tiles, sliding selection with a rotating gradient glow, crossfading previews |
 | Themes | Match system, Light, Dark |
-| Badges | Pinned, minimized, hidden, full screen, Space number |
+| Badges | Dock badges (unread counts), pinned, minimized, hidden, full screen, Space number |
 | Mouse | Hover to select, click to focus, hover buttons for close, minimize, full screen, pin |
 | Preferences | Shortcuts, appearance, which windows to show, sort order, excluded apps |
 | System | Menu bar icon (optional), launch at login |
@@ -83,7 +83,7 @@ Grant both in System Settings, Privacy & Security. Thanks to the local signing c
 
 - Drag and drop files onto a window in the switcher
 - Fully custom key recorder (any key combination) and more than two shortcuts
-- Per-shortcut filters, per-screen filtering, app badges from the Dock
+- Per-shortcut filters, per-screen filtering
 - Translations, VoiceOver support, auto-update
 
 ## Known limits

@@ -194,6 +194,7 @@ final class Switcher {
         for (index, app) in apps.enumerated() {
             var info = WindowInfo(id: CGWindowID(9000 + index), element: nil, app: app,
                                   title: "\(app.localizedName ?? "App") window")
+            info.badge = index == 1 ? "3" : (index == 4 ? "12" : nil)
             info.minimized = index == 2
             info.fullscreen = index == 3
             info.spaceIndex = index % 3 + 1

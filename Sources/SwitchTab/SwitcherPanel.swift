@@ -160,6 +160,43 @@ final class WindowCell: NSView {
 
         buildBadges(pinned: pinned)
         buildButtons(pinned: pinned)
+        buildDockBadge()
+    }
+
+    /// Red pill with the app's Dock badge, like the one on the Dock icon.
+    private func buildDockBadge() {
+        guard let text = info.badge, !text.isEmpty else { return }
+        let shown = text.count > 4 ? String(text.prefix(3)) + "…" : text
+        let label = NSTextField(labelWithString: shown)
+        label.font = .systemFont(ofSize: 12, weight: .bold)
+        label.textColor = .white
+        label.alignment = .center
+        label.sizeToFit()
+        let height: CGFloat = 20
+        let width = max(height, label.frame.width + 12)
+
+        let pill = NSView()
+        pill.wantsLayer = true
+        pill.layer?.backgroundColor = NSColor.systemRed.cgColor
+        pill.layer?.cornerRadius = height / 2
+        pill.layer?.borderWidth = 1.5
+        pill.layer?.borderColor = NSColor.white.withAlphaComponent(0.9).cgColor
+        pill.layer?.shadowColor = NSColor.black.cgColor
+        pill.layer?.shadowOpacity = 0.35
+        pill.layer?.shadowRadius = 3
+        pill.layer?.shadowOffset = CGSize(width: 0, height: -1)
+        switch style {
+        case .thumbnails: pill.frame = NSRect(x: bounds.width - width - 12, y: bounds.height - height - 12, width: width, height: height)
+        case .icons: pill.frame = NSRect(x: bounds.width - width - 6, y: bounds.height - height - 6, width: width, height: height)
+        case .titles:
+            // right side, left of the status badges if there are any
+            let taken = badges.superview == nil ? 0 : badges.frame.width + 6
+            pill.frame = NSRect(x: bounds.width - width - 8 - taken, y: (bounds.height - height) / 2, width: width, height: height)
+            self.label.frame.size.width -= width + 6
+        }
+        label.frame = NSRect(x: 0, y: (height - label.frame.height) / 2, width: width, height: label.frame.height)
+        pill.addSubview(label)
+        addSubview(pill)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }

@@ -12,6 +12,8 @@ struct WindowInfo {
     var onCurrentSpace = true
     /// An app with no open window, shown as a single tile.
     var isWindowless = false
+    /// Notification count the app shows on its Dock icon, if any.
+    var badge: String?
 
     var appName: String { app.localizedName ?? "App" }
     var hidden: Bool { app.isHidden }
@@ -55,6 +57,28 @@ enum Spaces {
         let ids = [NSNumber(value: window)] as CFArray
         guard let result = cgsCopySpacesForWindows(cgsMainConnection(), 7, ids)?.takeRetainedValue() as? [NSNumber] else { return [] }
         return result.map { $0.uint64Value }
+    }
+}
+
+/// Reads the badges (unread counts and similar) that apps show on their Dock icons.
+enum DockBadges {
+    /// Badge text by app bundle path.
+    static func read() -> [String: String] {
+        guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else { return [:] }
+        let axDock = AXUIElementCreateApplication(dock.processIdentifier)
+        AXUIElementSetMessagingTimeout(axDock, 0.2)
+        guard let lists: [AXUIElement] = WindowManager.attribute(axDock, kAXChildrenAttribute) else { return [:] }
+
+        var result: [String: String] = [:]
+        for list in lists {
+            guard let items: [AXUIElement] = WindowManager.attribute(list, kAXChildrenAttribute) else { continue }
+            for item in items {
+                guard let label: String = WindowManager.attribute(item, "AXStatusLabel"), !label.isEmpty,
+                      let url: URL = WindowManager.attribute(item, kAXURLAttribute) else { continue }
+                result[url.standardizedFileURL.path] = label
+            }
+        }
+        return result
     }
 }
 
@@ -218,6 +242,7 @@ enum WindowManager {
             }
         }
 
+        let dockBadges = settings.showDockBadges ? DockBadges.read() : [:]
         let ownPID = ProcessInfo.processInfo.processIdentifier
         let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         var result: [WindowInfo] = []
@@ -229,6 +254,7 @@ enum WindowManager {
             if scope == .activeApp, app.processIdentifier != frontPID { continue }
             if app.isHidden, !settings.showHidden { continue }
 
+            let badge = app.bundleURL.flatMap { dockBadges[$0.standardizedFileURL.path] }
             let axApp = AXUIElementCreateApplication(app.processIdentifier)
             AXUIElementSetMessagingTimeout(axApp, 0.25) // do not hang on an unresponsive app
             var elements: [AXUIElement] = attribute(axApp, kAXWindowsAttribute) ?? []
@@ -243,6 +269,7 @@ enum WindowManager {
                 let rawTitle: String = attribute(element, kAXTitleAttribute) ?? ""
                 var info = WindowInfo(id: id, element: element, app: app,
                                       title: rawTitle.isEmpty ? (app.localizedName ?? "Window") : rawTitle)
+                info.badge = badge
                 info.minimized = attribute(element, kAXMinimizedAttribute) ?? false
                 info.fullscreen = attribute(element, "AXFullScreen") ?? false
 
@@ -259,6 +286,7 @@ enum WindowManager {
             if seen.isEmpty, settings.showWindowless, scope == .all {
                 var info = WindowInfo(id: 0, element: nil, app: app, title: app.localizedName ?? "App")
                 info.isWindowless = true
+                info.badge = badge
                 windowless.append(info)
             }
         }

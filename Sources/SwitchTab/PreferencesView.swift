@@ -65,6 +65,7 @@ struct PreferencesView: View {
             Section("Effects") {
                 Toggle("Animations (pop-in, sliding selection, cascading tiles)", isOn: $settings.animations)
                 Toggle("Glowing gradient selection", isOn: $settings.glow)
+                Toggle("Dock badges (unread counts) on tiles", isOn: $settings.showDockBadges)
             }
         }
         .formStyle(.grouped)
