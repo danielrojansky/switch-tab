@@ -20,6 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             exit(ok ? 0 : 1)
         }
 
+        if arguments.contains("--stats-selftest") {
+            UserDefaults.standard.set(true, forKey: "statsEnabled")
+            Settings.shared.statsEnabled = true
+            exit(StatsStore.shared.selfTest() ? 0 : 1)
+        }
+
         applySettings()
         settingsObserver = Settings.shared.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.applySettings() }
@@ -46,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Keep focus history and the list of windows on other Spaces fresh.
         every(0.4) { _ in if AXIsProcessTrusted() { FocusTracker.poll() } }
         every(5) { _ in RemoteWindowScanner.scanAll() }
+        every(15) { _ in StatsStore.shared.tick(interval: 15) }
         RemoteWindowScanner.scanAll()
         let workspace = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didLaunchApplicationNotification] {

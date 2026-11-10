@@ -2,7 +2,7 @@
 
 Windows-style window switcher for macOS, with always-on-top windows. Hold Option, press Tab, see every open window with a live preview, release Option to jump to it. Inspired by [AltTab](https://alt-tab.app/).
 
-Version 0.3.0. Requires macOS 14 or later.
+Version 0.4.0. Requires macOS 14 or later.
 
 ## Features
 
@@ -18,6 +18,7 @@ Version 0.3.0. Requires macOS 14 or later.
 | Badges | Dock badges (unread counts), pinned, minimized, hidden, full screen, Space number |
 | Mouse | Hover to select, click to focus, hover buttons for close, minimize, full screen, pin |
 | Preferences | Shortcuts, appearance, which windows to show, sort order, excluded apps |
+| Statistics | Opt-in, local only: switches, active time per app, common app pairs, hourly pattern, export to CSV or JSON |
 | System | Menu bar icon (optional), launch at login |
 
 ## Keys
@@ -46,6 +47,19 @@ macOS does not allow one app to change the stacking level of another app's windo
 4. Clicking the mirror brings the real window back and passes the click through.
 
 The mirror has an accent border and an unpin button in its top right corner. Pinned windows are also listed in the menu bar menu.
+
+## Statistics
+
+Off by default. Switch on in Preferences, Statistics.
+
+| Collected | Used for |
+| --- | --- |
+| Switch events (from app, to app, Tab presses) | Common app pairs, switches per hour, selection depth |
+| Active time per app per day (paused after 60 seconds idle) | Time by app |
+| Switcher opens, cancels, open window count | Cancel rate, average clutter |
+| Actions (close, minimize, full screen, hide, quit, pin) | Feature use |
+
+Only app bundle IDs are stored, never window titles or content. Data lives in `~/Library/Application Support/SwitchTab/stats.sqlite` and never leaves the Mac. The Statistics tab shows the charts, exports CSV or JSON, and can delete everything.
 
 ## Install
 
@@ -76,6 +90,7 @@ Grant both in System Settings, Privacy & Security. Thanks to the local signing c
 | `Thumbnailer.swift` | Window previews through ScreenCaptureKit, cached between sessions |
 | `PinManager.swift` | Always on top (live mirror panels) |
 | `Settings.swift`, `PreferencesView.swift` | Preferences storage and window |
+| `Stats.swift`, `StatsView.swift` | Local usage statistics (SQLite) and the Statistics tab |
 | `PrivateAPI.swift` | Undocumented system calls: window IDs, Spaces, raising one window |
 | `scripts/setup-signing.sh` | One-time self-signed certificate in its own keychain |
 

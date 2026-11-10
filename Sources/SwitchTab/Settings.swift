@@ -62,6 +62,10 @@ final class Settings: ObservableObject {
 
     @Published var showDockBadges: Bool = Settings.load("showDockBadges", true) { didSet { save(showDockBadges, "showDockBadges") } }
 
+    // Statistics (opt-in)
+    @Published var statsEnabled: Bool = Settings.load("statsEnabled", false) { didSet { save(statsEnabled, "statsEnabled") } }
+    @Published var statsPeriod: Int = Settings.load("statsPeriod", 0) { didSet { save(statsPeriod, "statsPeriod") } }
+
     // Which windows to show
     @Published var allSpaces: Bool = Settings.load("allSpaces", true) { didSet { save(allSpaces, "allSpaces") } }
     @Published var showMinimized: Bool = Settings.load("showMinimized", true) { didSet { save(showMinimized, "showMinimized") } }

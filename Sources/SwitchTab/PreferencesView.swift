@@ -10,8 +10,9 @@ struct PreferencesView: View {
             appearance.tabItem { Label("Appearance", systemImage: "paintbrush") }
             shortcuts.tabItem { Label("Shortcuts", systemImage: "keyboard") }
             exclusions.tabItem { Label("Exclusions", systemImage: "nosign") }
+            StatsView().tabItem { Label("Statistics", systemImage: "chart.bar") }
         }
-        .frame(width: 540, height: 500)
+        .frame(width: 580, height: 560)
     }
 
     private var general: some View {

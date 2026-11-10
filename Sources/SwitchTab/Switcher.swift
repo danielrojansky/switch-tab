@@ -13,6 +13,9 @@ final class Switcher {
     private var scope: Scope = .all
     private var holdFlag: CGEventFlags = .maskAlternate
     private var triggerKey = KeyCode.tab
+    // for statistics: where the session started and how many moves it took
+    private var sessionFrom: String?
+    private var sessionMoves = 0
 
     private static let modifierMask: CGEventFlags = [.maskAlternate, .maskCommand, .maskControl]
 
@@ -101,7 +104,9 @@ final class Switcher {
             case KeyCode.down: move(by: panel.verticalStep)
             case KeyCode.up: move(by: -panel.verticalStep)
             case KeyCode.returnKey: commit()
-            case KeyCode.escape: close()
+            case KeyCode.escape:
+                StatsStore.shared.record("cancel")
+                close()
             case KeyCode.w: perform(.close)
             case KeyCode.m: perform(.minimize)
             case KeyCode.f: perform(.fullscreen)
@@ -129,6 +134,9 @@ final class Switcher {
         guard !windows.isEmpty else { return false }
 
         active = true
+        sessionFrom = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        sessionMoves = 1
+        StatsStore.shared.record("open", other: scope == .all ? "all" : "app", value: Double(windows.count))
         holdFlag = hold
         triggerKey = key
         self.scope = scope
@@ -152,6 +160,7 @@ final class Switcher {
         guard !windows.isEmpty else { return }
         let count = windows.count
         selected = ((selected + delta) % count + count) % count
+        sessionMoves += 1
         panel.select(selected, animated: true)
     }
 
@@ -160,6 +169,7 @@ final class Switcher {
         let window = windows[selected]
         if window.isWindowless, action != .quit, action != .hide { return }
         WindowManager.perform(action, on: window)
+        StatsStore.shared.record("action", app: window.app.bundleIdentifier, other: "\(action)")
 
         // Give the app a moment to close or change the window, then redraw the list.
         DispatchQueue.main.asyncAfter(deadline: .now() + (action == .pin ? 0.05 : 0.35)) { [weak self] in
@@ -178,7 +188,11 @@ final class Switcher {
         guard active else { return }
         let target = windows.indices.contains(selected) ? windows[selected] : nil
         close()
-        if let target { WindowManager.focus(target) }
+        if let target {
+            StatsStore.shared.record("switch", app: target.app.bundleIdentifier, other: sessionFrom,
+                                     value: Double(sessionMoves))
+            WindowManager.focus(target)
+        }
     }
 
     private func close() {
