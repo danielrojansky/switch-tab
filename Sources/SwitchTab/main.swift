@@ -1,38 +1,107 @@
 import AppKit
 import ApplicationServices
+import Combine
 import ServiceManagement
+import SwiftUI
 
 let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private var statusItem: NSStatusItem!
-    private var permissionTimer: Timer?
+    private var statusItem: NSStatusItem?
+    private var preferencesWindow: NSWindow?
+    private var timers: [Timer] = []
+    private var settingsObserver: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "rectangle.on.rectangle",
-                                           accessibilityDescription: "Switch Tab")
-        let menu = NSMenu()
-        menu.delegate = self
-        statusItem.menu = menu
+        // Debug mode: render the switcher with stand-in tiles to a PNG, then exit.
+        let arguments = CommandLine.arguments
+        if let flag = arguments.firstIndex(of: "--snapshot"), arguments.count > flag + 1 {
+            let ok = Switcher.shared.snapshot(to: arguments[flag + 1])
+            exit(ok ? 0 : 1)
+        }
 
-        // Accessibility: required to read keys globally and to focus windows.
+        applySettings()
+        settingsObserver = Settings.shared.objectWillChange.sink { [weak self] in
+            DispatchQueue.main.async { self?.applySettings() }
+        }
+
+        // Accessibility: required to read keys globally and to control windows.
         let prompt = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(prompt)
 
-        // Screen Recording: optional, only for window previews.
+        // Screen Recording: window previews and always on top.
         if !CGPreflightScreenCaptureAccess() {
             CGRequestScreenCaptureAccess()
         }
 
         if !Switcher.shared.startListening() {
-            permissionTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
+            every(2) { timer in
                 if AXIsProcessTrusted(), Switcher.shared.startListening() {
                     timer.invalidate()
-                    self?.permissionTimer = nil
+                    RemoteWindowScanner.scanAll()
                 }
             }
         }
+
+        // Keep focus history and the list of windows on other Spaces fresh.
+        every(0.4) { _ in if AXIsProcessTrusted() { FocusTracker.poll() } }
+        every(5) { _ in RemoteWindowScanner.scanAll() }
+        RemoteWindowScanner.scanAll()
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didLaunchApplicationNotification] {
+            workspace.addObserver(forName: name, object: nil, queue: .main) { _ in RemoteWindowScanner.scanAll() }
+        }
+
+        enableLoginItemOnFirstInstall()
+    }
+
+    private func every(_ interval: TimeInterval, _ block: @escaping (Timer) -> Void) {
+        let timer = Timer(timeInterval: interval, repeats: true, block: block)
+        RunLoop.main.add(timer, forMode: .common)
+        timers.append(timer)
+    }
+
+    /// Reacts to preference changes: menu bar icon and native shortcut takeover.
+    private func applySettings() {
+        let settings = Settings.shared
+
+        if settings.showMenuBarIcon, statusItem == nil {
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            item.button?.image = NSImage(systemSymbolName: "rectangle.on.rectangle",
+                                         accessibilityDescription: "Switch Tab")
+            let menu = NSMenu()
+            menu.delegate = self
+            item.menu = menu
+            statusItem = item
+        } else if !settings.showMenuBarIcon, let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+        }
+
+        // Using Command means the built-in macOS switcher has to step aside.
+        let usesCommand: (Int) -> Bool = { key in
+            (settings.holdModifier == 1 && settings.triggerKey == key)
+                || (settings.appHoldModifier == 1 && settings.appTriggerKey == key)
+        }
+        NativeHotKey.set(commandTab: !usesCommand(KeyCode.tab), keyAboveTab: !usesCommand(KeyCode.backtick))
+    }
+
+    private func enableLoginItemOnFirstInstall() {
+        let key = "didSetUpLoginItem"
+        guard !UserDefaults.standard.bool(forKey: key),
+              Bundle.main.bundlePath.hasPrefix("/Applications/") else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        try? SMAppService.mainApp.register()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        NativeHotKey.restore()
+        PinManager.shared.unpinAll()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showPreferences()
+        return false
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -41,20 +110,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let header = NSMenuItem(title: "Switch Tab \(appVersion)", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
-        let hint = NSMenuItem(title: "Hold ⌥ Option, press Tab", action: nil, keyEquivalent: "")
-        hint.isEnabled = false
-        menu.addItem(hint)
         menu.addItem(.separator())
 
         let accessibility = AXIsProcessTrusted() && Switcher.shared.isListening
         menu.addItem(item(accessibility ? "Accessibility: granted" : "Grant Accessibility (required)…",
                           #selector(openAccessibility), checked: accessibility))
-
         let recording = CGPreflightScreenCaptureAccess()
-        menu.addItem(item(recording ? "Screen Recording: granted" : "Grant Screen Recording (previews)…",
+        menu.addItem(item(recording ? "Screen Recording: granted" : "Grant Screen Recording (previews, always on top)…",
                           #selector(openScreenRecording), checked: recording))
-
         menu.addItem(.separator())
+
+        menu.addItem(item("Keep Focused Window on Top  ⌃⌥T", #selector(pinFocused), checked: false))
+        let pinned = PinManager.shared.pinned
+        for window in pinned {
+            let entry = item("    Unpin: \(window.appName), \(window.title)".prefix(70).description,
+                             #selector(unpin(_:)), checked: true)
+            entry.tag = Int(window.id)
+            menu.addItem(entry)
+        }
+        if pinned.count > 1 {
+            menu.addItem(item("    Unpin All", #selector(unpinAll), checked: false))
+        }
+        menu.addItem(.separator())
+
+        let preferences = item("Preferences…", #selector(showPreferences), checked: false)
+        preferences.keyEquivalent = ","
+        menu.addItem(preferences)
         menu.addItem(item("Launch at Login", #selector(toggleLoginItem),
                           checked: SMAppService.mainApp.status == .enabled))
         menu.addItem(.separator())
@@ -66,6 +147,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.target = self
         item.state = checked ? .on : .off
         return item
+    }
+
+    @objc private func pinFocused() {
+        // The menu took focus for a moment; wait until the previous window has it back.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { PinManager.shared.toggleFocused() }
+    }
+
+    @objc private func unpin(_ sender: NSMenuItem) {
+        PinManager.shared.unpin(CGWindowID(sender.tag))
+    }
+
+    @objc private func unpinAll() {
+        PinManager.shared.unpinAll()
+    }
+
+    @objc func showPreferences() {
+        if preferencesWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView()))
+            window.title = "Switch Tab Preferences"
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            preferencesWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        preferencesWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func openAccessibility() {
@@ -81,19 +188,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func toggleLoginItem() {
-        do {
-            if SMAppService.mainApp.status == .enabled {
-                try SMAppService.mainApp.unregister()
-            } else {
-                try SMAppService.mainApp.register()
-            }
-        } catch {
-            let alert = NSAlert()
-            alert.messageText = "Could not change Launch at Login"
-            alert.informativeText = error.localizedDescription
-            NSApp.activate(ignoringOtherApps: true)
-            alert.runModal()
-        }
+        Settings.shared.launchAtLogin.toggle()
+    }
+}
+
+// If the app is stopped from outside, still hand the native shortcuts back to macOS.
+for code in [SIGTERM, SIGINT, SIGHUP] {
+    signal(code) { _ in
+        NativeHotKey.restore()
+        exit(0)
     }
 }
 

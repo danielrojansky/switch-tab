@@ -1,17 +1,7 @@
 import AppKit
 
-private enum Key {
-    static let tab: Int64 = 48
-    static let escape: Int64 = 53
-    static let returnKey: Int64 = 36
-    static let left: Int64 = 123
-    static let right: Int64 = 124
-    static let down: Int64 = 125
-    static let up: Int64 = 126
-}
-
 /// Owns the global keyboard tap and the switching session:
-/// hold Option, press Tab to cycle, release Option to focus the selected window.
+/// hold the modifier, press the trigger key to cycle, release the modifier to focus.
 final class Switcher {
     static let shared = Switcher()
 
@@ -20,14 +10,29 @@ final class Switcher {
     private var windows: [WindowInfo] = []
     private var selected = 0
     private var active = false
+    private var scope: Scope = .all
+    private var holdFlag: CGEventFlags = .maskAlternate
+    private var triggerKey = KeyCode.tab
+
+    private static let modifierMask: CGEventFlags = [.maskAlternate, .maskCommand, .maskControl]
 
     var isListening: Bool { tap != nil }
 
     private init() {
-        panel.onCellClicked = { [weak self] index in
+        panel.onClick = { [weak self] index in
             guard let self, self.active else { return }
             self.selected = index
             self.commit()
+        }
+        panel.onHover = { [weak self] index in
+            guard let self, self.active, Settings.shared.hoverSelect, index != self.selected else { return }
+            self.selected = index
+            self.panel.select(index, animated: true)
+        }
+        panel.onAction = { [weak self] index, action in
+            guard let self, self.active else { return }
+            self.selected = index
+            self.perform(action)
         }
     }
 
@@ -65,28 +70,44 @@ final class Switcher {
         }
 
         let flags = event.flags
-        let optionDown = flags.contains(.maskAlternate)
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let held = flags.intersection(Switcher.modifierMask)
+        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+        let settings = Settings.shared
 
         switch type {
         case .keyDown:
-            if keyCode == Key.tab, optionDown,
-               !flags.contains(.maskCommand), !flags.contains(.maskControl) {
-                let backward = flags.contains(.maskShift)
-                if active {
-                    move(by: backward ? -1 : 1)
+            if !active {
+                if settings.pinShortcutEnabled, keyCode == KeyCode.t, held == [.maskControl, .maskAlternate] {
+                    PinManager.shared.toggleFocused()
                     return true
                 }
-                return begin(backward: backward)
+                let shortcuts: [(CGEventFlags, Int, Scope)] = [
+                    (Settings.flags(forModifier: settings.holdModifier), settings.triggerKey, .all),
+                    (Settings.flags(forModifier: settings.appHoldModifier), settings.appTriggerKey, .activeApp),
+                ]
+                for (hold, key, scope) in shortcuts where keyCode == key && held == hold {
+                    return begin(hold: hold, key: key, scope: scope, backward: flags.contains(.maskShift))
+                }
+                return false
             }
-            guard active else { return false }
+
+            if keyCode == triggerKey {
+                move(by: flags.contains(.maskShift) ? -1 : 1)
+                return true
+            }
             switch keyCode {
-            case Key.right: move(by: 1)
-            case Key.left: move(by: -1)
-            case Key.down: move(by: panel.columns)
-            case Key.up: move(by: -panel.columns)
-            case Key.returnKey: commit()
-            case Key.escape: cancel()
+            case KeyCode.right: move(by: panel.horizontalStep)
+            case KeyCode.left: move(by: -panel.horizontalStep)
+            case KeyCode.down: move(by: panel.verticalStep)
+            case KeyCode.up: move(by: -panel.verticalStep)
+            case KeyCode.returnKey: commit()
+            case KeyCode.escape: close()
+            case KeyCode.w: perform(.close)
+            case KeyCode.m: perform(.minimize)
+            case KeyCode.f: perform(.fullscreen)
+            case KeyCode.q: perform(.quit)
+            case KeyCode.h: perform(.hide)
+            case KeyCode.t: perform(.pin)
             default: break
             }
             return true // swallow every key while the switcher is open
@@ -95,7 +116,7 @@ final class Switcher {
             return active
 
         case .flagsChanged:
-            if active, !optionDown { commit() }
+            if active, !flags.contains(holdFlag) { commit() }
             return false
 
         default:
@@ -103,28 +124,54 @@ final class Switcher {
         }
     }
 
-    private func begin(backward: Bool) -> Bool {
-        windows = WindowManager.listWindows()
+    private func begin(hold: CGEventFlags, key: Int, scope: Scope, backward: Bool) -> Bool {
+        windows = WindowManager.listWindows(scope: scope)
         guard !windows.isEmpty else { return false }
 
         active = true
+        holdFlag = hold
+        triggerKey = key
+        self.scope = scope
         // Index 0 is the window already in front, so start on the previous one.
         selected = backward ? windows.count - 1 : min(1, windows.count - 1)
-        panel.present(windows: windows, selected: selected)
+        show(animated: true)
+        return true
+    }
 
-        let ids = windows.map { $0.id }
+    private func show(animated: Bool) {
+        panel.present(windows: windows, selected: selected,
+                      pinned: PinManager.shared.pinnedIDs, animated: animated)
+        let ids = windows.filter { !$0.isWindowless }.map { $0.id }
         Thumbnailer.shared.prune(keeping: ids)
         Thumbnailer.shared.refresh(ids) { [weak self] id, image in
             self?.panel.updateThumbnail(id, image)
         }
-        return true
     }
 
     private func move(by delta: Int) {
         guard !windows.isEmpty else { return }
         let count = windows.count
         selected = ((selected + delta) % count + count) % count
-        panel.select(selected)
+        panel.select(selected, animated: true)
+    }
+
+    private func perform(_ action: WindowAction) {
+        guard windows.indices.contains(selected) else { return }
+        let window = windows[selected]
+        if window.isWindowless, action != .quit, action != .hide { return }
+        WindowManager.perform(action, on: window)
+
+        // Give the app a moment to close or change the window, then redraw the list.
+        DispatchQueue.main.asyncAfter(deadline: .now() + (action == .pin ? 0.05 : 0.35)) { [weak self] in
+            guard let self, self.active else { return }
+            self.windows = WindowManager.listWindows(scope: self.scope)
+            if self.windows.isEmpty {
+                self.close()
+                return
+            }
+            self.selected = min(self.selected, self.windows.count - 1)
+            self.show(animated: false)
+        }
     }
 
     private func commit() {
@@ -134,13 +181,26 @@ final class Switcher {
         if let target { WindowManager.focus(target) }
     }
 
-    private func cancel() {
-        close()
-    }
-
     private func close() {
         active = false
-        panel.orderOut(nil)
+        panel.dismiss()
         windows = []
+    }
+
+    /// Debug helper: shows the panel with stand-in tiles and saves it as a PNG.
+    func snapshot(to path: String) -> Bool {
+        let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }.prefix(7)
+        var demo: [WindowInfo] = []
+        for (index, app) in apps.enumerated() {
+            var info = WindowInfo(id: CGWindowID(9000 + index), element: nil, app: app,
+                                  title: "\(app.localizedName ?? "App") window")
+            info.minimized = index == 2
+            info.fullscreen = index == 3
+            info.spaceIndex = index % 3 + 1
+            demo.append(info)
+        }
+        guard !demo.isEmpty else { return false }
+        panel.present(windows: demo, selected: min(1, demo.count - 1), pinned: [9004], animated: false)
+        return panel.writeSnapshot(to: path)
     }
 }

@@ -1,58 +1,99 @@
 # Switch Tab
 
-Windows-style window switcher for macOS. Hold Option, press Tab, see every open window with a preview, release Option to jump to it. Inspired by [AltTab](https://alt-tab.app/).
+Windows-style window switcher for macOS, with always-on-top windows. Hold Option, press Tab, see every open window with a live preview, release Option to jump to it. Inspired by [AltTab](https://alt-tab.app/).
 
-Version 0.1.0. Requires macOS 14 or later.
+Version 0.2.0. Requires macOS 14 or later.
 
-## Use
+## Features
+
+| Area | What you get |
+| --- | --- |
+| Switching | All windows of all apps, across Spaces, including minimized, hidden and full-screen windows |
+| Second shortcut | Option + ` cycles only the windows of the current app |
+| Always on top | Pin any window so it stays above everything else (T in the switcher, or Control + Option + T) |
+| Window actions | Close, minimize, full screen, hide app, quit app, straight from the switcher |
+| Three styles | Thumbnails, App Icons, Titles, each in Small, Medium, Large |
+| Effects | Blurred glass panel, spring pop-in, cascading tiles, sliding selection with a rotating gradient glow, crossfading previews |
+| Themes | Match system, Light, Dark |
+| Badges | Pinned, minimized, hidden, full screen, Space number |
+| Mouse | Hover to select, click to focus, hover buttons for close, minimize, full screen, pin |
+| Preferences | Shortcuts, appearance, which windows to show, sort order, excluded apps |
+| System | Menu bar icon (optional), launch at login |
+
+## Keys
 
 | Keys | Action |
 | --- | --- |
-| Option + Tab | Open switcher, move to next window |
-| Option + Shift + Tab | Move to previous window |
-| Arrow keys | Move selection (while Option is held) |
+| Option + Tab | Open switcher, next window |
+| Option + ` | Open switcher for the current app only |
+| Shift + trigger key, arrow keys | Move selection |
 | Release Option, or Return | Focus selected window |
 | Escape | Cancel |
-| Mouse click | Focus clicked window |
+| W / M / F | Close / minimize or restore / toggle full screen |
+| T | Keep selected window on top, or stop |
+| H / Q | Hide or show app / quit app |
+| Control + Option + T | Keep the focused window on top (works anywhere) |
 
-A menu bar icon shows permission status, a Launch at Login toggle, and Quit.
+Both shortcuts can be changed in Preferences (Option, Command or Control, with Tab, ` or Space). Choosing Command + Tab switches off the built-in macOS app switcher while Switch Tab runs, and restores it on quit.
 
-## Build and run
+## Always on top
+
+macOS does not allow one app to change the stacking level of another app's window. Switch Tab works around that:
+
+1. A pinned window gets a floating live mirror placed exactly over it.
+2. While the real window has focus, the mirror hides and you work in the real window.
+3. When another window comes forward, the mirror appears on top, updating live.
+4. Clicking the mirror brings the real window back and passes the click through.
+
+The mirror has an accent border and an unpin button in its top right corner. Pinned windows are also listed in the menu bar menu.
+
+## Install
 
 Needs only Xcode Command Line Tools (no full Xcode).
 
 ```bash
-./scripts/build-app.sh
+./scripts/install.sh
 ```
 
-```bash
-open build/SwitchTab.app
-```
+This creates a local signing certificate (first run only), builds, copies the app to `/Applications/SwitchTab.app` and starts it. Launch at login is switched on at the first start from Applications.
 
 ## Permissions
 
 | Permission | Why | Required |
 | --- | --- | --- |
-| Accessibility | Read the shortcut globally, list and focus windows | Yes |
-| Screen Recording | Window previews. Without it, tiles show app icons | No |
+| Accessibility | Read the shortcut globally, list and control windows | Yes |
+| Screen Recording | Window previews and always on top | For previews and pinning |
 
-Grant both in System Settings, Privacy & Security. The app is ad-hoc signed, so macOS asks again after each rebuild.
+Grant both in System Settings, Privacy & Security. Thanks to the local signing certificate, the grants survive rebuilds.
 
 ## How it works
 
-1. `Switcher.swift`: a `CGEventTap` watches the keyboard. Option + Tab opens a session and swallows keys until Option is released.
-2. `WindowManager.swift`: lists windows of regular apps through the Accessibility API, ordered front to back (most recent first), minimized last.
-3. `Thumbnailer.swift`: captures previews with ScreenCaptureKit, cached between sessions so the panel opens instantly.
-4. `SwitcherPanel.swift`: a non-activating floating panel, so the current app keeps focus until a window is chosen.
-5. `PrivateAPI.swift`: three undocumented system calls, used to map a window to its ID and to raise one window instead of the whole app.
+| File | Role |
+| --- | --- |
+| `Switcher.swift` | Global keyboard tap and the switching session |
+| `WindowManager.swift` | Window list (Accessibility API), Spaces, focus history, window actions |
+| `SwitcherPanel.swift` | The panel, its three layouts and all animations |
+| `Thumbnailer.swift` | Window previews through ScreenCaptureKit, cached between sessions |
+| `PinManager.swift` | Always on top (live mirror panels) |
+| `Settings.swift`, `PreferencesView.swift` | Preferences storage and window |
+| `PrivateAPI.swift` | Undocumented system calls: window IDs, Spaces, raising one window |
+| `scripts/setup-signing.sh` | One-time self-signed certificate in its own keychain |
+
+## Not included (AltTab has these)
+
+- Drag and drop files onto a window in the switcher
+- Fully custom key recorder (any key combination) and more than two shortcuts
+- Per-shortcut filters, per-screen filtering, app badges from the Dock
+- Translations, VoiceOver support, auto-update
 
 ## Known limits
 
-- Windows on other Spaces and full-screen windows are not listed (Accessibility API only reports the current Space).
-- Shortcut is fixed to Option + Tab. No preferences window yet.
-- Uses undocumented macOS calls, so a future macOS release could break focusing.
+- A pinned window that is not focused is a live picture: a click activates the real window first. Dragging the mirror does not move the window.
+- macOS shows its screen recording indicator while a window is pinned.
+- Windows on other Spaces are found by a background scan every few seconds, so a brand new window there can take a moment to appear.
+- Uses undocumented macOS calls, so a future macOS release could break parts of it.
 
 ## Alternatives considered
 
 - Fork AltTab: full feature set, but needs full Xcode and is GPL-3.0.
-- Replace Cmd + Tab: closer to Windows, but overrides the native app switcher.
+- True always on top through code injection: needs System Integrity Protection disabled, so not used.
