@@ -19,6 +19,9 @@ enum KeyCode {
     static let escape = 53, returnKey = 36
     static let left = 123, right = 124, down = 125, up = 126
     static let w = 13, m = 46, f = 3, q = 12, h = 4, t = 17
+    static let s = 1, slash = 44, delete = 51
+    /// Key codes of the number row, 1 through 9, in order.
+    static let digits = [18, 19, 20, 21, 23, 22, 26, 28, 25]
 
     static let triggerChoices: [(code: Int, name: String)] = [
         (tab, "Tab"), (backtick, "` (key above Tab)"), (space, "Space"),

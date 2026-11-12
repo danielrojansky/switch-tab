@@ -8,6 +8,11 @@ final class Switcher {
     private let panel = SwitcherPanel()
     private var tap: CFMachPort?
     private var windows: [WindowInfo] = []
+    /// Every window of the session; `windows` is this list narrowed by the search text.
+    private var allWindows: [WindowInfo] = []
+    /// Search mode: typing filters the list and the switcher stays open after the modifier is released.
+    private var searching = false
+    private var query = ""
     private var selected = 0
     private var active = false
     private var scope: Scope = .all
@@ -98,7 +103,23 @@ final class Switcher {
                 move(by: flags.contains(.maskShift) ? -1 : 1)
                 return true
             }
+            if searching {
+                handleSearchKey(keyCode, event: event)
+                return true
+            }
+            if let digit = KeyCode.digits.firstIndex(of: keyCode) {
+                if digit < windows.count, digit != selected {
+                    selected = digit
+                    sessionMoves += 1
+                    panel.select(selected, animated: true)
+                }
+                return true
+            }
             switch keyCode {
+            case KeyCode.s, KeyCode.slash:
+                searching = true
+                query = ""
+                show(animated: false)
             case KeyCode.right: move(by: panel.horizontalStep)
             case KeyCode.left: move(by: -panel.horizontalStep)
             case KeyCode.down: move(by: panel.verticalStep)
@@ -121,7 +142,7 @@ final class Switcher {
             return active
 
         case .flagsChanged:
-            if active, !flags.contains(holdFlag) { commit() }
+            if active, !searching, !flags.contains(holdFlag) { commit() }
             return false
 
         default:
@@ -129,8 +150,69 @@ final class Switcher {
         }
     }
 
+    /// Keys while search mode is on: text edits the query, the rest navigates.
+    private func handleSearchKey(_ keyCode: Int, event: CGEvent) {
+        switch keyCode {
+        case KeyCode.right: move(by: panel.horizontalStep)
+        case KeyCode.left: move(by: -panel.horizontalStep)
+        case KeyCode.down: move(by: panel.verticalStep)
+        case KeyCode.up: move(by: -panel.verticalStep)
+        case KeyCode.returnKey: commit()
+        case KeyCode.escape:
+            // First Esc clears the text, the next one closes the switcher.
+            if query.isEmpty {
+                StatsStore.shared.record("cancel")
+                close()
+            } else {
+                query = ""
+                applyFilter()
+            }
+        case KeyCode.delete:
+            guard !query.isEmpty else { return }
+            query.removeLast()
+            applyFilter()
+        default:
+            let text = typedText(event)
+            guard !text.isEmpty else { return }
+            query += text
+            applyFilter()
+        }
+    }
+
+    /// The character a key produces in the current keyboard layout, ignoring the held modifier.
+    private func typedText(_ event: CGEvent) -> String {
+        guard let copy = event.copy() else { return "" }
+        copy.flags = event.flags.intersection(.maskShift)
+        var length = 0
+        var units = [UniChar](repeating: 0, count: 4)
+        copy.keyboardGetUnicodeString(maxStringLength: 4, actualStringLength: &length, unicodeString: &units)
+        let text = String(utf16CodeUnits: units, count: length)
+        let printable = text.unicodeScalars.allSatisfy {
+            !CharacterSet.controlCharacters.contains($0) && !(0xF700...0xF8FF).contains($0.value)
+        }
+        return printable ? text : ""
+    }
+
+    /// Narrows the list to windows whose title or app name contains the search text.
+    private func applyFilter() {
+        if query.isEmpty {
+            windows = allWindows
+        } else {
+            let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+            windows = allWindows.filter {
+                $0.title.range(of: query, options: options) != nil
+                    || $0.appName.range(of: query, options: options) != nil
+            }
+        }
+        selected = 0
+        show(animated: false)
+    }
+
     private func begin(hold: CGEventFlags, key: Int, scope: Scope, backward: Bool) -> Bool {
-        windows = WindowManager.listWindows(scope: scope)
+        allWindows = WindowManager.listWindows(scope: scope)
+        windows = allWindows
+        searching = false
+        query = ""
         guard !windows.isEmpty else { return false }
 
         active = true
@@ -148,7 +230,8 @@ final class Switcher {
 
     private func show(animated: Bool) {
         panel.present(windows: windows, selected: selected,
-                      pinned: PinManager.shared.pinnedIDs, animated: animated)
+                      pinned: PinManager.shared.pinnedIDs, animated: animated,
+                      search: searching ? query : nil)
         let ids = windows.filter { !$0.isWindowless }.map { $0.id }
         Thumbnailer.shared.prune(keeping: ids)
         Thumbnailer.shared.refresh(ids) { [weak self] id, image in
@@ -174,13 +257,15 @@ final class Switcher {
         // Give the app a moment to close or change the window, then redraw the list.
         DispatchQueue.main.asyncAfter(deadline: .now() + (action == .pin ? 0.05 : 0.35)) { [weak self] in
             guard let self, self.active else { return }
-            self.windows = WindowManager.listWindows(scope: self.scope)
-            if self.windows.isEmpty {
+            self.allWindows = WindowManager.listWindows(scope: self.scope)
+            if self.allWindows.isEmpty {
                 self.close()
                 return
             }
-            self.selected = min(self.selected, self.windows.count - 1)
-            self.show(animated: false)
+            let previous = self.selected
+            self.applyFilter()
+            self.selected = max(0, min(previous, self.windows.count - 1))
+            self.panel.select(self.selected, animated: false)
         }
     }
 
@@ -197,15 +282,24 @@ final class Switcher {
 
     private func close() {
         active = false
+        searching = false
+        query = ""
         panel.dismiss()
         windows = []
+        allWindows = []
     }
 
     /// Debug helper: shows the panel with stand-in tiles and saves it as a PNG.
     func snapshot(to path: String) -> Bool {
         let demo = Switcher.demoWindows(count: 7)
         guard !demo.isEmpty else { return false }
-        panel.present(windows: demo, selected: min(1, demo.count - 1), pinned: [9004], animated: false)
+        // SWITCHTAB_DEMO_SEARCH=<text> renders search mode; a text that matches nothing shows the empty state.
+        let search = ProcessInfo.processInfo.environment["SWITCHTAB_DEMO_SEARCH"]
+        let shown = search.map { text in
+            text.isEmpty ? demo : demo.filter { $0.title.range(of: text, options: .caseInsensitive) != nil }
+        } ?? demo
+        panel.present(windows: shown, selected: search == nil ? min(1, shown.count - 1) : 0,
+                      pinned: [9004], animated: false, search: search)
         return panel.writeSnapshot(to: path)
     }
 

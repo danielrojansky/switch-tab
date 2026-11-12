@@ -148,6 +148,8 @@ struct PreferencesView: View {
                 keyRow(["Tab", "⇧ Tab", "← → ↑ ↓"], "Move selection")
                 keyRow(["Release modifier", "Return"], "Focus selected window")
                 keyRow(["Esc"], "Cancel")
+                keyRow(["1", "…", "9"], "Jump to that tile")
+                keyRow(["S", "/"], "Search: type to filter by title or app")
                 keyRow(["W"], "Close window")
                 keyRow(["M"], "Minimize or restore")
                 keyRow(["F"], "Toggle full screen")

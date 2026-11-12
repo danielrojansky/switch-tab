@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+- Search: press S or / in the switcher, then type to filter by window title or app name. The switcher stays open after the modifier is released; Return focuses, Esc clears the text and then cancels.
+- Number keys 1 to 9 select that tile.
+- Fix: the unpin button on a pinned tile was not drawn.
+
 ## 0.5.0
 - New app icon (stacked windows with a Tab arrow) and a matching menu bar glyph. `scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`.
 - Switcher: key hints bar and position counter (optional), tiles drawn as cards with a hover state, window buttons also on the selected thumbnail, dimmed titles for minimized and hidden windows, tooltips with the full title.

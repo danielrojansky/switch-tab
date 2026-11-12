@@ -247,7 +247,7 @@ final class WindowCell: NSView {
             ("xmark.circle.fill", .systemRed, "Close (W)", .close),
             ("minus.circle.fill", .systemYellow, "Minimize (M)", .minimize),
             ("arrow.up.left.and.arrow.down.right.circle.fill", .systemGreen, "Full screen (F)", .fullscreen),
-            (pinned ? "pin.slash.circle.fill" : "pin.circle.fill", .systemBlue, pinned ? "Unpin (T)" : "Keep on top (T)", .pin),
+            ("pin.circle.fill", pinned ? .systemGray : .systemBlue, pinned ? "Unpin (T)" : "Keep on top (T)", .pin),
         ]
         let width = CGFloat(specs.count) * 20 + 6
         buttons.wantsLayer = true
@@ -382,6 +382,9 @@ final class SwitcherPanel: NSPanel {
     private let footer = NSTextField(labelWithString: "")
     private let hints = NSTextField(labelWithString: "")
     private let counter = NSTextField(labelWithString: "")
+    private let searchIcon = NSImageView()
+    private let searchField = NSTextField(labelWithString: "")
+    private let emptyLabel = NSTextField(labelWithString: "No matching windows")
     private var highlight = HighlightView(frame: .zero)
     private var cells: [WindowCell] = []
     private var generation = 0
@@ -430,15 +433,30 @@ final class SwitcherPanel: NSPanel {
         counter.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         counter.textColor = .secondaryLabelColor
         counter.alignment = .right
+
+        searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Search")
+        searchIcon.contentTintColor = .secondaryLabelColor
+        searchField.font = .systemFont(ofSize: 15, weight: .medium)
+        searchField.lineBreakMode = .byTruncatingHead
+        emptyLabel.font = .systemFont(ofSize: 14)
+        emptyLabel.textColor = .secondaryLabelColor
+        emptyLabel.alignment = .center
     }
 
     /// Key hints for the bottom bar: the longest set that fits the panel width.
-    private func hintText(maxWidth: CGFloat) -> NSAttributedString? {
+    private func hintText(maxWidth: CGFloat, searching: Bool) -> NSAttributedString? {
         let all: [(String, String)] = [
             ("⇥", "Next"), ("⇧⇥", "Back"), ("↩", "Focus"), ("W", "Close"), ("M", "Minimize"),
             ("F", "Full screen"), ("T", "Pin"), ("Q", "Quit"), ("esc", "Cancel"),
+            ("S", "Search"), ("1-9", "Jump"),
         ]
-        let variants = [all, [0, 2, 3, 4, 7, 8].map { all[$0] }, [3, 4, 7].map { all[$0] }, [all[8]]]
+        let search: [(String, String)] = [
+            ("⇥", "Next"), ("⇧⇥", "Back"), ("↩", "Focus"), ("⌫", "Delete"), ("esc", "Clear, then cancel"),
+        ]
+        let variants = searching
+            ? [search, [search[2], search[4]], [search[2]]]
+            : [[0, 1, 2, 9, 10, 3, 4, 5, 6, 7, 8].map { all[$0] }, [0, 2, 9, 10, 3, 4, 7, 8].map { all[$0] },
+               [0, 2, 9, 3, 7, 8].map { all[$0] }, [9, 3, 4, 7].map { all[$0] }, [all[9], all[8]], [all[8]]]
         let keyFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
         let textFont = NSFont.systemFont(ofSize: 11)
         for variant in variants {
@@ -497,7 +515,8 @@ final class SwitcherPanel: NSPanel {
     }
 
     /// `onScreen: false` lays the panel out without showing it, for previews and snapshots.
-    func present(windows: [WindowInfo], selected: Int, pinned: Set<CGWindowID>, animated: Bool, onScreen: Bool = true) {
+    func present(windows: [WindowInfo], selected: Int, pinned: Set<CGWindowID>, animated: Bool,
+                 onScreen: Bool = true, search: String? = nil) {
         generation += 1
         let settings = Settings.shared
         let style = settings.switcherStyle
@@ -516,6 +535,9 @@ final class SwitcherPanel: NSPanel {
         footer.removeFromSuperview()
         hints.removeFromSuperview()
         counter.removeFromSuperview()
+        searchIcon.removeFromSuperview()
+        searchField.removeFromSuperview()
+        emptyLabel.removeFromSuperview()
 
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0]
@@ -524,19 +546,41 @@ final class SwitcherPanel: NSPanel {
         let titleRow: CGFloat = style == .icons ? 30 : 0
         let hintRow: CGFloat = settings.showHints ? 24 : 0
         let footerHeight = titleRow + hintRow
-        let layout = grid(count: windows.count, style: style, visible: visible, footerHeight: footerHeight)
+        let searchRow: CGFloat = search == nil ? 0 : 34
+        let layout = grid(count: max(1, windows.count), style: style, visible: visible,
+                          footerHeight: footerHeight + searchRow)
         let cell = layout.cell
         let columns = layout.columns, rows = layout.rows
         horizontalStep = style == .titles ? rows : 1
         verticalStep = style == .titles ? 1 : columns
 
-        let width = padding * 2 + CGFloat(columns) * cell.width + CGFloat(columns - 1) * spacing
-        let height = padding * 2 + footerHeight + CGFloat(rows) * cell.height + CGFloat(rows - 1) * spacing
+        // In search mode the panel keeps a minimum width so the text has room.
+        let gridWidth = CGFloat(columns) * cell.width + CGFloat(columns - 1) * spacing
+        let width = padding * 2 + (search == nil ? gridWidth : max(gridWidth, 420))
+        let inset = (width - padding * 2 - gridWidth) / 2
+        let height = padding * 2 + footerHeight + searchRow
+            + CGFloat(rows) * cell.height + CGFloat(rows - 1) * spacing
         setFrame(NSRect(x: visible.midX - width / 2, y: visible.midY - height / 2, width: width, height: height),
                  display: false)
         effect.frame = root.bounds
 
-        root.addSubview(highlight)
+        if !windows.isEmpty { root.addSubview(highlight) }
+        if let search {
+            let top = height - padding - 24
+            searchIcon.frame = NSRect(x: padding + 2, y: top + 2, width: 18, height: 18)
+            searchField.frame = NSRect(x: padding + 28, y: top, width: width - padding * 2 - 28, height: 22)
+            searchField.stringValue = search.isEmpty ? "Type to search windows" : search
+            searchField.textColor = search.isEmpty ? .tertiaryLabelColor : .labelColor
+            root.addSubview(searchIcon)
+            root.addSubview(searchField)
+        }
+        if windows.isEmpty {
+            emptyLabel.frame = NSRect(x: padding, y: padding + footerHeight + (cell.height - 20) / 2,
+                                      width: width - padding * 2, height: 20)
+            root.addSubview(emptyLabel)
+            footer.stringValue = ""
+            counter.stringValue = "0 / 0"
+        }
         if titleRow > 0 {
             footer.frame = NSRect(x: padding, y: padding - 4 + hintRow, width: width - padding * 2, height: 22)
             root.addSubview(footer)
@@ -546,7 +590,7 @@ final class SwitcherPanel: NSPanel {
             let side: CGFloat = 54
             counter.frame = NSRect(x: width - padding - side, y: padding - 9, width: side, height: 16)
             root.addSubview(counter)
-            if let text = hintText(maxWidth: width - padding * 2 - side * 2) {
+            if let text = hintText(maxWidth: width - padding * 2 - side * 2, searching: search != nil) {
                 hints.attributedStringValue = text
                 hints.frame = NSRect(x: padding + side, y: padding - 9, width: width - padding * 2 - side * 2, height: 16)
                 root.addSubview(hints)
@@ -561,8 +605,8 @@ final class SwitcherPanel: NSPanel {
             let column = style == .titles ? index / rows : index % columns
             let row = style == .titles ? index % rows : index / columns
             view.frame.origin = NSPoint(
-                x: padding + CGFloat(column) * (cell.width + spacing),
-                y: height - padding - cell.height - CGFloat(row) * (cell.height + spacing))
+                x: padding + inset + CGFloat(column) * (cell.width + spacing),
+                y: height - padding - searchRow - cell.height - CGFloat(row) * (cell.height + spacing))
             view.onMove = { [weak self] in self?.onHover?(index) }
             view.onClick = { [weak self] in self?.onClick?(index) }
             view.onAction = { [weak self] action in self?.onAction?(index, action) }
