@@ -63,6 +63,14 @@ final class Settings: ObservableObject {
     @Published var animations: Bool = Settings.load("animations", true) { didSet { save(animations, "animations") } }
     @Published var glow: Bool = Settings.load("glow", true) { didSet { save(glow, "glow") } }
 
+    @Published var adaptiveColor: Bool = Settings.load("adaptiveColor", true) { didSet { save(adaptiveColor, "adaptiveColor") } }
+    @Published var ambientLight: Bool = Settings.load("ambientLight", true) { didSet { save(ambientLight, "ambientLight") } }
+    /// Selected tab of the Preferences window. Not stored.
+    @Published var prefsTab: Int = 0
+
+    /// Animations are on and the system "Reduce motion" setting is off.
+    var motion: Bool { animations && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
     @Published var showHints: Bool = Settings.load("showHints", true) { didSet { save(showHints, "showHints") } }
 
     @Published var showDockBadges: Bool = Settings.load("showDockBadges", true) { didSet { save(showDockBadges, "showDockBadges") } }

@@ -2,7 +2,7 @@
 
 Windows-style window switcher for macOS, with always-on-top windows. Hold Option, press Tab, see every open window with a live preview, release Option to jump to it. Inspired by [AltTab](https://alt-tab.app/).
 
-Version 0.6.0. Requires macOS 14 or later.
+Version 0.7.0. Requires macOS 14 or later.
 
 ## Features
 
@@ -14,14 +14,14 @@ Version 0.6.0. Requires macOS 14 or later.
 | Always on top | Pin any window so it stays above everything else (T in the switcher, or Control + Option + T) |
 | Window actions | Close, minimize, full screen, hide app, quit app, straight from the switcher |
 | Three styles | Thumbnails, App Icons, Titles, each in Small, Medium, Large |
-| Effects | Blurred glass panel, spring pop-in, cascading tiles, sliding selection with a rotating gradient glow, crossfading previews |
+| Effects | Blurred glass panel, spring pop-in, cascading tiles, sliding selection with a rotating, breathing glow in the selected app's color, ambient light behind the selection, tiles that shrink away on close, crossfading previews. Follows Reduce Motion |
 | Themes | Match system, Light, Dark |
 | Badges | Dock badges (unread counts), pinned, minimized, hidden, full screen, Space number |
 | Mouse | Hover to select, click to focus, buttons for close, minimize, full screen, pin on the hovered and the selected tile |
 | Guidance | Key hints and a position counter at the bottom of the switcher (can be turned off) |
 | Preferences | Shortcuts, appearance with a live preview, permission status, which windows to show, sort order, excluded apps |
 | Statistics | Opt-in, local only: switches, active time per app, common app pairs, hourly pattern, export to CSV or JSON |
-| System | Menu bar icon (optional) with quick toggles for style, Spaces and key hints, launch at login |
+| System | Menu bar icon (optional) with one-click style switch and toggles for Spaces and key hints, launch at login |
 
 ## Keys
 

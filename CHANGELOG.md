@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+- Preferences redesigned: icon tab bar, compact cards in two columns, every settings tab fits without scrolling (Statistics stays a scrolling report). Permissions shown as status chips.
+- Menu bar menu: header with app icon and status, switcher style as a one-click segmented control, shorter list.
+- Selection takes the color of the selected app's icon (glow, border, tint), with an ambient pool of light behind the tile. Both can be turned off.
+- Breathing glow, tiles shrink away when their window is closed, the panel shrinks out on dismiss, bigger pop for the selected app icon.
+- Animations follow the system Reduce Motion setting.
+
 ## 0.6.0
 - Search: press S or / in the switcher, then type to filter by window title or app name. The switcher stays open after the modifier is released; Return focuses, Esc clears the text and then cancels.
 - Number keys 1 to 9 select that tile.

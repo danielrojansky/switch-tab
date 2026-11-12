@@ -22,6 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let flag = arguments.firstIndex(of: "--snapshot-menu-icon"), arguments.count > flag + 1 {
             exit(Icons.writeMenuBarPreview(to: arguments[flag + 1]) ? 0 : 1)
         }
+        if let flag = arguments.firstIndex(of: "--snapshot-ui"), arguments.count > flag + 1 {
+            exit(MenuViews.writeUISnapshots(to: arguments[flag + 1], target: self) ? 0 : 1)
+        }
         if let flag = arguments.firstIndex(of: "--snapshot-preview"), arguments.count > flag + 1 {
             let data = Switcher.previewImage()?.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0) }?
                 .representation(using: .png, properties: [:])
@@ -124,11 +127,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
 
         let settings = Settings.shared
-        menu.addItem(.sectionHeader(title: "Switch Tab \(appVersion)"))
-
-        // Permissions only take up space while one is missing.
         let accessibility = AXIsProcessTrusted() && Switcher.shared.isListening
         let recording = CGPreflightScreenCaptureAccess()
+
+        let header = NSMenuItem()
+        header.view = MenuViews.header(ready: accessibility)
+        menu.addItem(header)
+
+        // Permissions only take up space while one is missing.
         if !accessibility {
             menu.addItem(item("Grant Accessibility (required)…", #selector(openAccessibility),
                               symbol: "exclamationmark.triangle.fill"))
@@ -137,36 +143,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item("Grant Screen Recording (previews, always on top)…", #selector(openScreenRecording),
                               symbol: "exclamationmark.triangle.fill"))
         }
-
         menu.addItem(.separator())
-        menu.addItem(.sectionHeader(title: "Switcher"))
-        let style = item("Style", nil, symbol: "square.grid.2x2")
-        let styles = NSMenu()
-        for choice in SwitcherStyle.allCases {
-            let entry = item(choice.name, #selector(setStyle(_:)), checked: settings.style == choice.rawValue)
-            entry.tag = choice.rawValue
-            styles.addItem(entry)
-        }
-        style.submenu = styles
+
+        // Style is one click: a segmented control right in the menu.
+        let style = NSMenuItem()
+        style.view = MenuViews.styleRow(selected: settings.style, target: self, action: #selector(styleSegmentChanged(_:)))
         menu.addItem(style)
         menu.addItem(item("Windows from All Spaces", #selector(toggleAllSpaces),
                           symbol: "rectangle.3.group", checked: settings.allSpaces))
         menu.addItem(item("Key Hints in Switcher", #selector(toggleHints),
                           symbol: "keyboard", checked: settings.showHints))
-
         menu.addItem(.separator())
-        menu.addItem(.sectionHeader(title: "Always on Top"))
+
+        let pinned = PinManager.shared.pinned
         let pin = item("Keep Focused Window on Top", #selector(pinFocused), symbol: "pin")
         if settings.pinShortcutEnabled {
             pin.keyEquivalent = "t"
             pin.keyEquivalentModifierMask = [.control, .option]
         }
         menu.addItem(pin)
-        let pinned = PinManager.shared.pinned
         for window in pinned {
             let name = window.title.isEmpty || window.title == window.appName
                 ? window.appName : "\(window.appName): \(window.title)"
-            let entry = item(name.count > 56 ? String(name.prefix(55)) + "…" : name, #selector(unpin(_:)), checked: true)
+            let entry = item(name.count > 44 ? String(name.prefix(43)) + "…" : name, #selector(unpin(_:)), checked: true)
             if let icon = window.app.icon?.copy() as? NSImage {
                 icon.size = NSSize(width: 16, height: 16)
                 entry.image = icon
@@ -179,14 +178,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if pinned.count > 1 {
             menu.addItem(item("Unpin All", #selector(unpinAll), symbol: "pin.slash"))
         }
-
         menu.addItem(.separator())
+
         let preferences = item("Preferences…", #selector(showPreferences), symbol: "gearshape")
         preferences.keyEquivalent = ","
         menu.addItem(preferences)
-        menu.addItem(item("Launch at Login", #selector(toggleLoginItem), symbol: "power",
-                          checked: SMAppService.mainApp.status == .enabled))
-        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Switch Tab", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
@@ -198,8 +194,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
-    @objc private func setStyle(_ sender: NSMenuItem) {
-        Settings.shared.style = sender.tag
+    @objc private func styleSegmentChanged(_ sender: NSSegmentedControl) {
+        Settings.shared.style = sender.selectedSegment
     }
 
     @objc private func toggleAllSpaces() {

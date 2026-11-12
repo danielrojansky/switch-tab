@@ -35,11 +35,8 @@ final class HighlightView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         guard let layer else { return }
-        let accent = NSColor.controlAccentColor
         layer.cornerRadius = 14
-        layer.backgroundColor = accent.withAlphaComponent(0.24).cgColor
         layer.masksToBounds = false
-        layer.shadowColor = accent.cgColor
         layer.shadowOffset = .zero
         layer.shadowRadius = 16
         layer.shadowOpacity = Settings.shared.glow ? 0.85 : 0
@@ -48,7 +45,6 @@ final class HighlightView: NSView {
             gradient.type = .conic
             gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
             gradient.endPoint = CGPoint(x: 0.5, y: 0)
-            gradient.colors = [accent, NSColor.systemPink, NSColor.systemPurple, NSColor.systemTeal, accent].map { $0.cgColor }
             border.addSublayer(gradient)
             stroke.fillColor = nil
             stroke.strokeColor = NSColor.white.cgColor
@@ -57,11 +53,45 @@ final class HighlightView: NSView {
             layer.addSublayer(border)
         } else {
             layer.borderWidth = 2
-            layer.borderColor = accent.cgColor
         }
+        setTint(nil, animated: false)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Recolors the frame. `nil` is the classic look: system accent with a rainbow border.
+    func setTint(_ tint: NSColor?, animated: Bool) {
+        guard let layer else { return }
+        let base = tint ?? .controlAccentColor
+        var ring = [base, NSColor.systemPink, NSColor.systemPurple, NSColor.systemTeal, base]
+        if let tint {
+            var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+            tint.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+            func shifted(_ by: CGFloat, _ bright: CGFloat) -> NSColor {
+                NSColor(deviceHue: (hue + by + 1).truncatingRemainder(dividingBy: 1), saturation: saturation,
+                        brightness: min(1, brightness * bright), alpha: 1)
+            }
+            ring = [tint, shifted(0.09, 1.1), shifted(0, 1.25), shifted(-0.09, 1.1), tint]
+        }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(animated ? 0.3 : 0)
+        CATransaction.setDisableActions(!animated)
+        if animated {
+            // The view's own layer has no implicit animations, so fade its colors by hand.
+            for (key, value) in [("backgroundColor", base.withAlphaComponent(0.24).cgColor), ("shadowColor", base.cgColor)] {
+                let fade = CABasicAnimation(keyPath: key)
+                fade.fromValue = layer.presentation()?.value(forKey: key) ?? layer.value(forKey: key)
+                fade.toValue = value
+                fade.duration = 0.3
+                layer.add(fade, forKey: key)
+            }
+        }
+        layer.backgroundColor = base.withAlphaComponent(0.24).cgColor
+        layer.shadowColor = base.cgColor
+        layer.borderColor = base.cgColor
+        gradient.colors = ring.map { $0.cgColor }
+        CATransaction.commit()
+    }
 
     override func layout() {
         super.layout()
@@ -75,13 +105,22 @@ final class HighlightView: NSView {
         stroke.path = CGPath(roundedRect: bounds.insetBy(dx: 1.25, dy: 1.25), cornerWidth: 13, cornerHeight: 13, transform: nil)
         CATransaction.commit()
 
-        if Settings.shared.animations, gradient.animation(forKey: "spin") == nil {
+        if Settings.shared.motion, gradient.animation(forKey: "spin") == nil {
             let spin = CABasicAnimation(keyPath: "transform.rotation.z")
             spin.fromValue = 0
             spin.toValue = -2 * Double.pi
             spin.duration = 4
             spin.repeatCount = .infinity
             gradient.add(spin, forKey: "spin")
+
+            let breathe = CABasicAnimation(keyPath: "shadowRadius")
+            breathe.fromValue = 11
+            breathe.toValue = 24
+            breathe.duration = 1.5
+            breathe.autoreverses = true
+            breathe.repeatCount = .infinity
+            breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            layer?.add(breathe, forKey: "breathe")
         }
     }
 }
@@ -269,7 +308,7 @@ final class WindowCell: NSView {
 
     func setThumbnail(_ image: NSImage) {
         guard style == .thumbnails, !info.isWindowless else { return }
-        if Settings.shared.animations, preview.image != nil {
+        if Settings.shared.motion, preview.image != nil {
             let fade = CATransition()
             fade.type = .fade
             fade.duration = 0.2
@@ -307,13 +346,13 @@ final class WindowCell: NSView {
         guard style != .titles else { return }
 
         // Layer-backed views anchor at the origin, so scale around the center by hand.
-        let scale: CGFloat = value ? 1.045 : 1
+        let scale: CGFloat = value ? (style == .icons ? 1.1 : 1.045) : 1
         let cx = bounds.width / 2, cy = bounds.height / 2
         var target = CATransform3DMakeTranslation(-cx, -cy, 0)
         target = CATransform3DConcat(target, CATransform3DMakeScale(scale, scale, 1))
         target = CATransform3DConcat(target, CATransform3DMakeTranslation(cx, cy, 0))
 
-        if animated, Settings.shared.animations {
+        if animated, Settings.shared.motion {
             let spring = CASpringAnimation(keyPath: "transform")
             spring.fromValue = layer.presentation()?.transform ?? layer.transform
             spring.toValue = target
@@ -324,6 +363,26 @@ final class WindowCell: NSView {
         }
         layer.transform = target
         layer.zPosition = value ? 1 : 0
+    }
+
+    /// Shrinks and fades the tile, used when its window is being closed.
+    func animateRemoval() {
+        guard let layer, Settings.shared.motion else { return }
+        let cx = bounds.width / 2, cy = bounds.height / 2
+        var small = CATransform3DMakeTranslation(-cx, -cy, 0)
+        small = CATransform3DConcat(small, CATransform3DMakeScale(0.8, 0.8, 1))
+        small = CATransform3DConcat(small, CATransform3DMakeTranslation(cx, cy, 0))
+        let shrink = CABasicAnimation(keyPath: "transform")
+        shrink.toValue = small
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.toValue = 0
+        let group = CAAnimationGroup()
+        group.animations = [shrink, fade]
+        group.duration = 0.22
+        group.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        group.fillMode = .forwards
+        group.isRemovedOnCompletion = false
+        layer.add(group, forKey: "removal")
     }
 
     func animateEntrance(delay: CFTimeInterval) {
@@ -379,6 +438,8 @@ final class SwitcherPanel: NSPanel {
     private let spacing: CGFloat = 10
     private let root = NSView()
     private let effect = NSVisualEffectView()
+    private let ambientView = NSView()
+    private let ambient = CAGradientLayer()
     private let footer = NSTextField(labelWithString: "")
     private let hints = NSTextField(labelWithString: "")
     private let counter = NSTextField(labelWithString: "")
@@ -423,6 +484,17 @@ final class SwitcherPanel: NSPanel {
         effect.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
         effect.autoresizingMask = [.width, .height]
         root.addSubview(effect)
+
+        // Soft pool of the selected app's color behind its tile.
+        ambientView.wantsLayer = true
+        ambientView.layer?.cornerRadius = 22
+        ambientView.layer?.masksToBounds = true
+        ambientView.autoresizingMask = [.width, .height]
+        ambient.type = .radial
+        ambient.startPoint = CGPoint(x: 0.5, y: 0.5)
+        ambient.endPoint = CGPoint(x: 1, y: 1)
+        ambientView.layer?.addSublayer(ambient)
+        root.addSubview(ambientView)
 
         footer.font = .systemFont(ofSize: 14, weight: .semibold)
         footer.textColor = .labelColor
@@ -563,6 +635,8 @@ final class SwitcherPanel: NSPanel {
         setFrame(NSRect(x: visible.midX - width / 2, y: visible.midY - height / 2, width: width, height: height),
                  display: false)
         effect.frame = root.bounds
+        ambientView.frame = root.bounds
+        ambient.isHidden = windows.isEmpty || !settings.ambientLight
 
         if !windows.isEmpty { root.addSubview(highlight) }
         if let search {
@@ -653,7 +727,7 @@ final class SwitcherPanel: NSPanel {
     func select(_ index: Int, animated: Bool) {
         guard cells.indices.contains(index) else { return }
         let target = cells[index].frame.insetBy(dx: -3, dy: -3)
-        if animated, Settings.shared.animations {
+        if animated, Settings.shared.motion {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.2
                 context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
@@ -668,9 +742,28 @@ final class SwitcherPanel: NSPanel {
         }
         counter.stringValue = "\(index + 1) / \(cells.count)"
         let info = cells[index].info
+
+        let moving = animated && Settings.shared.motion
+        let tint: NSColor? = Settings.shared.adaptiveColor ? AppColor.color(for: info.app) : nil
+        highlight.setTint(tint, animated: moving)
+        let glow = tint ?? .controlAccentColor
+        let cell = cells[index].frame
+        CATransaction.begin()
+        CATransaction.setDisableActions(!moving)
+        CATransaction.setAnimationDuration(0.35)
+        ambient.bounds = CGRect(x: 0, y: 0, width: cell.width * 2.4, height: cell.height * 2.4)
+        ambient.position = CGPoint(x: cell.midX, y: cell.midY)
+        ambient.colors = [glow.withAlphaComponent(0.42).cgColor, glow.withAlphaComponent(0).cgColor]
+        CATransaction.commit()
         footer.stringValue = info.isWindowless || info.title == info.appName
             ? info.appName
             : "\(info.appName): \(info.title)"
+    }
+
+    /// Plays the closing animation on one tile.
+    func animateRemoval(at index: Int) {
+        guard cells.indices.contains(index) else { return }
+        cells[index].animateRemoval()
     }
 
     func updateThumbnail(_ id: CGWindowID, _ image: NSImage) {
@@ -680,13 +773,24 @@ final class SwitcherPanel: NSPanel {
 
     func dismiss() {
         generation += 1
-        guard Settings.shared.animations, isVisible else {
+        guard Settings.shared.motion, isVisible else {
             orderOut(nil)
             return
         }
         let current = generation
+        if let layer = root.layer {
+            let cx = root.bounds.midX, cy = root.bounds.midY
+            var end = CATransform3DMakeTranslation(-cx, -cy, 0)
+            end = CATransform3DConcat(end, CATransform3DMakeScale(0.95, 0.95, 1))
+            end = CATransform3DConcat(end, CATransform3DMakeTranslation(cx, cy, 0))
+            let shrink = CABasicAnimation(keyPath: "transform")
+            shrink.toValue = end
+            shrink.duration = 0.13
+            shrink.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            layer.add(shrink, forKey: "shrink")
+        }
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.1
+            context.duration = 0.12
             animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             guard let self, self.generation == current else { return }

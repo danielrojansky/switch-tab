@@ -5,7 +5,7 @@ Windows-style window switcher for macOS with always-on-top windows. Swift, Swift
 ## Commands
 - Build and install: `./scripts/install.sh` (signs, builds, copies to /Applications, starts).
 - Build only: `./scripts/build-app.sh` (output in `build/`).
-- Debug renders: `SwitchTab --snapshot <png>` draws the panel with demo tiles; `--snapshot-preview <png>` the Preferences preview; `--snapshot-menu-icon <png>` the menu bar glyph.
+- Debug renders: `SwitchTab --snapshot <png>` draws the panel with demo tiles; `--snapshot-preview <png>` the Preferences preview; `--snapshot-menu-icon <png>` the menu bar glyph; `--snapshot-ui <folder>` every Preferences tab and the custom menu rows.
 - App icon: `swift scripts/make-icon.swift` rewrites `Resources/AppIcon.icns` (add a PNG path to only render a preview).
 - Stats self-test: `SWITCHTAB_STATS_DB=<tmp.sqlite> SwitchTab --stats-selftest`.
 

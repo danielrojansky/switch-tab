@@ -252,6 +252,7 @@ final class Switcher {
         let window = windows[selected]
         if window.isWindowless, action != .quit, action != .hide { return }
         WindowManager.perform(action, on: window)
+        if action == .close || action == .quit { panel.animateRemoval(at: selected) }
         StatsStore.shared.record("action", app: window.app.bundleIdentifier, other: "\(action)")
 
         // Give the app a moment to close or change the window, then redraw the list.
