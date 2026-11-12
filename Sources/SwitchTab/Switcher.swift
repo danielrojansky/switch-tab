@@ -203,7 +203,29 @@ final class Switcher {
 
     /// Debug helper: shows the panel with stand-in tiles and saves it as a PNG.
     func snapshot(to path: String) -> Bool {
-        let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }.prefix(7)
+        let demo = Switcher.demoWindows(count: 7)
+        guard !demo.isEmpty else { return false }
+        panel.present(windows: demo, selected: min(1, demo.count - 1), pinned: [9004], animated: false)
+        return panel.writeSnapshot(to: path)
+    }
+
+    /// Panel used only to draw the preview in Preferences; it never goes on screen.
+    private static let previewPanel = SwitcherPanel()
+
+    /// The switcher drawn with stand-in tiles and the current appearance settings.
+    static func previewImage() -> NSImage? {
+        let demo = demoWindows(count: 4)
+        guard !demo.isEmpty else { return nil }
+        previewPanel.present(windows: demo, selected: min(1, demo.count - 1), pinned: [9002],
+                             animated: false, onScreen: false)
+        guard let rep = previewPanel.renderBitmap() else { return nil }
+        let image = NSImage(size: previewPanel.frame.size)
+        image.addRepresentation(rep)
+        return image
+    }
+
+    static func demoWindows(count: Int) -> [WindowInfo] {
+        let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }.prefix(count)
         var demo: [WindowInfo] = []
         for (index, app) in apps.enumerated() {
             var info = WindowInfo(id: CGWindowID(9000 + index), element: nil, app: app,
@@ -214,8 +236,6 @@ final class Switcher {
             info.spaceIndex = index % 3 + 1
             demo.append(info)
         }
-        guard !demo.isEmpty else { return false }
-        panel.present(windows: demo, selected: min(1, demo.count - 1), pinned: [9004], animated: false)
-        return panel.writeSnapshot(to: path)
+        return demo
     }
 }

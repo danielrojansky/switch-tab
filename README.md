@@ -2,7 +2,7 @@
 
 Windows-style window switcher for macOS, with always-on-top windows. Hold Option, press Tab, see every open window with a live preview, release Option to jump to it. Inspired by [AltTab](https://alt-tab.app/).
 
-Version 0.4.1. Requires macOS 14 or later.
+Version 0.5.0. Requires macOS 14 or later.
 
 ## Features
 
@@ -16,10 +16,11 @@ Version 0.4.1. Requires macOS 14 or later.
 | Effects | Blurred glass panel, spring pop-in, cascading tiles, sliding selection with a rotating gradient glow, crossfading previews |
 | Themes | Match system, Light, Dark |
 | Badges | Dock badges (unread counts), pinned, minimized, hidden, full screen, Space number |
-| Mouse | Hover to select, click to focus, hover buttons for close, minimize, full screen, pin |
-| Preferences | Shortcuts, appearance, which windows to show, sort order, excluded apps |
+| Mouse | Hover to select, click to focus, buttons for close, minimize, full screen, pin on the hovered and the selected tile |
+| Guidance | Key hints and a position counter at the bottom of the switcher (can be turned off) |
+| Preferences | Shortcuts, appearance with a live preview, permission status, which windows to show, sort order, excluded apps |
 | Statistics | Opt-in, local only: switches, active time per app, common app pairs, hourly pattern, export to CSV or JSON |
-| System | Menu bar icon (optional), launch at login |
+| System | Menu bar icon (optional) with quick toggles for style, Spaces and key hints, launch at login |
 
 ## Keys
 
@@ -110,9 +111,30 @@ Grant both in System Settings, Privacy & Security. Thanks to the local signing c
 
 ## Roadmap
 
-- Drag and drop onto windows, free-form key recorder, more shortcuts
-- Translations, VoiceOver, auto-update
-- Optional upload of aggregate statistics (explicit opt-in, not built)
+Suggested next features, taken from similar apps and ordered by value for effort. None of these are built yet.
+
+| Priority | Feature | Seen in | Effort |
+| --- | --- | --- | --- |
+| 1 | Type to search: filter the list by window title or app name while the switcher is open | [AltTab](https://alt-tab.app/), [DockDoor](https://github.com/ejbills/DockDoor), [window-switcher](https://github.com/sean01zhang/window-switcher) | Medium |
+| 2 | Full-size preview of the selected window before switching | [AltTab](https://alt-tab.app/) | Medium |
+| 3 | Number keys 1 to 9 jump straight to a tile | Own idea, fits the key hints bar | Small |
+| 4 | Middle-click a tile to close the window without switching | [DockDoor](https://github.com/ejbills/DockDoor) | Small |
+| 5 | Custom switchers: more than two shortcuts, each with its own filters (current Space only, minimized or not) | [Tab](https://github.com/zeus-12/tab), AltTab | Medium |
+| 6 | Free-form key recorder for any key combination | AltTab | Medium |
+| 7 | Window previews when hovering a Dock icon | [DockDoor](https://github.com/ejbills/DockDoor) | Large |
+| 8 | Show an app's windows above the built-in Command + Tab switcher | [DockDoor](https://github.com/ejbills/DockDoor) | Large |
+| 9 | Pinned apps: hop between a short list of chosen apps with one shortcut | HopTab | Medium |
+| 10 | Switch automatically to a compact title list when an app has many windows | [DockDoor](https://github.com/ejbills/DockDoor) | Small |
+| 11 | Trackpad gestures on a tile (swipe to minimize or maximize) | [DockDoor](https://github.com/ejbills/DockDoor) | Medium |
+| 12 | AppleScript and command line control of the switcher | [DockDoor](https://github.com/ejbills/DockDoor) | Medium |
+| 13 | Drag and drop files onto a tile | AltTab | Medium |
+| 14 | Translations, VoiceOver, auto-update | AltTab | Large |
+
+Also considered:
+
+- Scroll wheel moves the selection; a "No windows" message instead of a silent no-op.
+- Optional upload of aggregate statistics (explicit opt-in, not built).
+- Native always on top: macOS lets an app raise only its own windows (Apple Music does this for its MiniPlayer). Raising another app's window needs code injection with System Integrity Protection off, so Switch Tab keeps the mirror-panel design.
 
 ## Documentation
 

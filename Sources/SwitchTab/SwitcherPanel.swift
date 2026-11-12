@@ -100,6 +100,7 @@ final class WindowCell: NSView {
     private let badges = NSView()
     private let buttons = NSView()
     private var selected = false
+    private var hovered = false
 
     init(info: WindowInfo, style: SwitcherStyle, size: NSSize, thumbnail: NSImage?, pinned: Bool) {
         self.info = info
@@ -112,8 +113,9 @@ final class WindowCell: NSView {
         let fontSize: CGFloat = max(11, min(14, size.height / (style == .titles ? 2.6 : 12)))
         label.stringValue = info.title
         label.font = .systemFont(ofSize: fontSize, weight: .medium)
-        label.textColor = .labelColor
+        label.textColor = dimmed ? .secondaryLabelColor : .labelColor
         label.lineBreakMode = .byTruncatingTail
+        toolTip = info.isWindowless || info.title == info.appName ? info.appName : "\(info.appName): \(info.title)"
 
         switch style {
         case .thumbnails:
@@ -278,9 +280,29 @@ final class WindowCell: NSView {
         preview.image = image
     }
 
+    // Tiles sit on a faint card that brightens under the pointer. Drawn in
+    // updateLayer so the color follows the panel's light or dark appearance.
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        let base: CGFloat = style == .titles ? 0 : 0.05
+        layer.cornerRadius = 12
+        layer.backgroundColor = NSColor.labelColor.withAlphaComponent(hovered && !selected ? 0.13 : base).cgColor
+    }
+
+    /// Window buttons show under the pointer, and on the selected thumbnail so the actions are discoverable.
+    private func updateChrome() {
+        let show = hovered || (selected && style == .thumbnails)
+        buttons.isHidden = !show
+        if style == .titles { badges.isHidden = show && buttons.superview != nil }
+        needsDisplay = true
+    }
+
     func setSelected(_ value: Bool, animated: Bool) {
         guard value != selected, let layer else { return }
         selected = value
+        updateChrome()
         label.font = .systemFont(ofSize: label.font?.pointSize ?? 12, weight: value ? .bold : .medium)
         guard style != .titles else { return }
 
@@ -334,14 +356,16 @@ final class WindowCell: NSView {
     // Selection follows the pointer only once it actually moves, so a panel that
     // opens under a resting pointer does not steal the selection.
     override func mouseMoved(with event: NSEvent) {
-        buttons.isHidden = false
-        if style == .titles { badges.isHidden = true }
+        if !hovered {
+            hovered = true
+            updateChrome()
+        }
         onMove?()
     }
 
     override func mouseExited(with event: NSEvent) {
-        buttons.isHidden = true
-        badges.isHidden = false
+        hovered = false
+        updateChrome()
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -356,6 +380,8 @@ final class SwitcherPanel: NSPanel {
     private let root = NSView()
     private let effect = NSVisualEffectView()
     private let footer = NSTextField(labelWithString: "")
+    private let hints = NSTextField(labelWithString: "")
+    private let counter = NSTextField(labelWithString: "")
     private var highlight = HighlightView(frame: .zero)
     private var cells: [WindowCell] = []
     private var generation = 0
@@ -399,6 +425,38 @@ final class SwitcherPanel: NSPanel {
         footer.textColor = .labelColor
         footer.alignment = .center
         footer.lineBreakMode = .byTruncatingTail
+
+        hints.alignment = .center
+        counter.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        counter.textColor = .secondaryLabelColor
+        counter.alignment = .right
+    }
+
+    /// Key hints for the bottom bar: the longest set that fits the panel width.
+    private func hintText(maxWidth: CGFloat) -> NSAttributedString? {
+        let all: [(String, String)] = [
+            ("⇥", "Next"), ("⇧⇥", "Back"), ("↩", "Focus"), ("W", "Close"), ("M", "Minimize"),
+            ("F", "Full screen"), ("T", "Pin"), ("Q", "Quit"), ("esc", "Cancel"),
+        ]
+        let variants = [all, [0, 2, 3, 4, 7, 8].map { all[$0] }, [3, 4, 7].map { all[$0] }, [all[8]]]
+        let keyFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        let textFont = NSFont.systemFont(ofSize: 11)
+        for variant in variants {
+            let line = NSMutableAttributedString()
+            for (index, hint) in variant.enumerated() {
+                if index > 0 { line.append(NSAttributedString(string: "     ")) }
+                line.append(NSAttributedString(string: hint.0, attributes: [
+                    .font: keyFont, .foregroundColor: NSColor.labelColor]))
+                line.append(NSAttributedString(string: " " + hint.1, attributes: [
+                    .font: textFont, .foregroundColor: NSColor.secondaryLabelColor]))
+            }
+            guard line.size().width <= maxWidth else { continue }
+            let centered = NSMutableParagraphStyle()
+            centered.alignment = .center
+            line.addAttribute(.paragraphStyle, value: centered, range: NSRange(location: 0, length: line.length))
+            return line
+        }
+        return nil
     }
 
     override var canBecomeKey: Bool { false }
@@ -438,11 +496,12 @@ final class SwitcherPanel: NSPanel {
         return (cell, columns, rows)
     }
 
-    func present(windows: [WindowInfo], selected: Int, pinned: Set<CGWindowID>, animated: Bool) {
+    /// `onScreen: false` lays the panel out without showing it, for previews and snapshots.
+    func present(windows: [WindowInfo], selected: Int, pinned: Set<CGWindowID>, animated: Bool, onScreen: Bool = true) {
         generation += 1
         let settings = Settings.shared
         let style = settings.switcherStyle
-        let animate = animated && settings.animations
+        let animate = animated && settings.animations && onScreen
 
         switch settings.theme {
         case 1: appearance = NSAppearance(named: .aqua)
@@ -455,12 +514,16 @@ final class SwitcherPanel: NSPanel {
         highlight.removeFromSuperview()
         highlight = HighlightView(frame: .zero)
         footer.removeFromSuperview()
+        hints.removeFromSuperview()
+        counter.removeFromSuperview()
 
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0]
         let visible = screen.visibleFrame
 
-        let footerHeight: CGFloat = style == .icons ? 30 : 0
+        let titleRow: CGFloat = style == .icons ? 30 : 0
+        let hintRow: CGFloat = settings.showHints ? 24 : 0
+        let footerHeight = titleRow + hintRow
         let layout = grid(count: windows.count, style: style, visible: visible, footerHeight: footerHeight)
         let cell = layout.cell
         let columns = layout.columns, rows = layout.rows
@@ -474,9 +537,20 @@ final class SwitcherPanel: NSPanel {
         effect.frame = root.bounds
 
         root.addSubview(highlight)
-        if footerHeight > 0 {
-            footer.frame = NSRect(x: padding, y: padding - 4, width: width - padding * 2, height: 22)
+        if titleRow > 0 {
+            footer.frame = NSRect(x: padding, y: padding - 4 + hintRow, width: width - padding * 2, height: 22)
             root.addSubview(footer)
+        }
+        if hintRow > 0 {
+            // The counter sits on the right; the hints stay centered between equal margins.
+            let side: CGFloat = 54
+            counter.frame = NSRect(x: width - padding - side, y: padding - 9, width: side, height: 16)
+            root.addSubview(counter)
+            if let text = hintText(maxWidth: width - padding * 2 - side * 2) {
+                hints.attributedStringValue = text
+                hints.frame = NSRect(x: padding + side, y: padding - 9, width: width - padding * 2 - side * 2, height: 16)
+                root.addSubview(hints)
+            }
         }
 
         let stagger = min(0.018, 0.22 / Double(max(1, windows.count)))
@@ -499,6 +573,11 @@ final class SwitcherPanel: NSPanel {
 
         select(selected, animated: false)
 
+        if !onScreen {
+            alphaValue = 1
+            root.layoutSubtreeIfNeeded()
+            return
+        }
         if animate {
             alphaValue = 0
             orderFrontRegardless()
@@ -543,6 +622,7 @@ final class SwitcherPanel: NSPanel {
         for (i, cell) in cells.enumerated() {
             cell.setSelected(i == index, animated: animated)
         }
+        counter.stringValue = "\(index + 1) / \(cells.count)"
         let info = cells[index].info
         footer.stringValue = info.isWindowless || info.title == info.appName
             ? info.appName
@@ -570,11 +650,16 @@ final class SwitcherPanel: NSPanel {
         })
     }
 
+    /// Renders the panel content to a bitmap. Used by the preferences preview and `--snapshot`.
+    func renderBitmap() -> NSBitmapImageRep? {
+        guard let view = contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return rep
+    }
+
     /// Renders the panel content to a PNG file. Used by the `--snapshot` debug mode.
     func writeSnapshot(to path: String) -> Bool {
-        guard let view = contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        guard let data = rep.representation(using: .png, properties: [:]) else { return false }
+        guard let data = renderBitmap()?.representation(using: .png, properties: [:]) else { return false }
         return (try? data.write(to: URL(fileURLWithPath: path))) != nil
     }
 }

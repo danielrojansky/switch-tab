@@ -19,6 +19,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let ok = Switcher.shared.snapshot(to: arguments[flag + 1])
             exit(ok ? 0 : 1)
         }
+        if let flag = arguments.firstIndex(of: "--snapshot-menu-icon"), arguments.count > flag + 1 {
+            exit(Icons.writeMenuBarPreview(to: arguments[flag + 1]) ? 0 : 1)
+        }
+        if let flag = arguments.firstIndex(of: "--snapshot-preview"), arguments.count > flag + 1 {
+            let data = Switcher.previewImage()?.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0) }?
+                .representation(using: .png, properties: [:])
+            let ok = (try? data?.write(to: URL(fileURLWithPath: arguments[flag + 1]))) != nil && data != nil
+            exit(ok ? 0 : 1)
+        }
 
         if arguments.contains("--stats-selftest") {
             UserDefaults.standard.set(true, forKey: "statsEnabled")
@@ -74,8 +83,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if settings.showMenuBarIcon, statusItem == nil {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-            item.button?.image = NSImage(systemSymbolName: "rectangle.on.rectangle",
-                                         accessibilityDescription: "Switch Tab")
+            item.button?.image = Icons.menuBar
+            item.button?.toolTip = "Switch Tab"
             let menu = NSMenu()
             menu.delegate = self
             item.menu = menu
@@ -114,46 +123,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let header = NSMenuItem(title: "Switch Tab \(appVersion)", action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
-        menu.addItem(.separator())
+        let settings = Settings.shared
+        menu.addItem(.sectionHeader(title: "Switch Tab \(appVersion)"))
 
+        // Permissions only take up space while one is missing.
         let accessibility = AXIsProcessTrusted() && Switcher.shared.isListening
-        menu.addItem(item(accessibility ? "Accessibility: granted" : "Grant Accessibility (required)…",
-                          #selector(openAccessibility), checked: accessibility))
         let recording = CGPreflightScreenCaptureAccess()
-        menu.addItem(item(recording ? "Screen Recording: granted" : "Grant Screen Recording (previews, always on top)…",
-                          #selector(openScreenRecording), checked: recording))
-        menu.addItem(.separator())
+        if !accessibility {
+            menu.addItem(item("Grant Accessibility (required)…", #selector(openAccessibility),
+                              symbol: "exclamationmark.triangle.fill"))
+        }
+        if !recording {
+            menu.addItem(item("Grant Screen Recording (previews, always on top)…", #selector(openScreenRecording),
+                              symbol: "exclamationmark.triangle.fill"))
+        }
 
-        menu.addItem(item("Keep Focused Window on Top  ⌃⌥T", #selector(pinFocused), checked: false))
+        menu.addItem(.separator())
+        menu.addItem(.sectionHeader(title: "Switcher"))
+        let style = item("Style", nil, symbol: "square.grid.2x2")
+        let styles = NSMenu()
+        for choice in SwitcherStyle.allCases {
+            let entry = item(choice.name, #selector(setStyle(_:)), checked: settings.style == choice.rawValue)
+            entry.tag = choice.rawValue
+            styles.addItem(entry)
+        }
+        style.submenu = styles
+        menu.addItem(style)
+        menu.addItem(item("Windows from All Spaces", #selector(toggleAllSpaces),
+                          symbol: "rectangle.3.group", checked: settings.allSpaces))
+        menu.addItem(item("Key Hints in Switcher", #selector(toggleHints),
+                          symbol: "keyboard", checked: settings.showHints))
+
+        menu.addItem(.separator())
+        menu.addItem(.sectionHeader(title: "Always on Top"))
+        let pin = item("Keep Focused Window on Top", #selector(pinFocused), symbol: "pin")
+        if settings.pinShortcutEnabled {
+            pin.keyEquivalent = "t"
+            pin.keyEquivalentModifierMask = [.control, .option]
+        }
+        menu.addItem(pin)
         let pinned = PinManager.shared.pinned
         for window in pinned {
-            let entry = item("    Unpin: \(window.appName), \(window.title)".prefix(70).description,
-                             #selector(unpin(_:)), checked: true)
+            let name = window.title.isEmpty || window.title == window.appName
+                ? window.appName : "\(window.appName): \(window.title)"
+            let entry = item(name.count > 56 ? String(name.prefix(55)) + "…" : name, #selector(unpin(_:)), checked: true)
+            if let icon = window.app.icon?.copy() as? NSImage {
+                icon.size = NSSize(width: 16, height: 16)
+                entry.image = icon
+            }
+            entry.indentationLevel = 1
+            entry.toolTip = "Click to stop keeping this window on top"
             entry.tag = Int(window.id)
             menu.addItem(entry)
         }
         if pinned.count > 1 {
-            menu.addItem(item("    Unpin All", #selector(unpinAll), checked: false))
+            menu.addItem(item("Unpin All", #selector(unpinAll), symbol: "pin.slash"))
         }
-        menu.addItem(.separator())
 
-        let preferences = item("Preferences…", #selector(showPreferences), checked: false)
+        menu.addItem(.separator())
+        let preferences = item("Preferences…", #selector(showPreferences), symbol: "gearshape")
         preferences.keyEquivalent = ","
         menu.addItem(preferences)
-        menu.addItem(item("Launch at Login", #selector(toggleLoginItem),
+        menu.addItem(item("Launch at Login", #selector(toggleLoginItem), symbol: "power",
                           checked: SMAppService.mainApp.status == .enabled))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Switch Tab", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
-    private func item(_ title: String, _ action: Selector, checked: Bool) -> NSMenuItem {
+    private func item(_ title: String, _ action: Selector?, symbol: String? = nil, checked: Bool = false) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         item.state = checked ? .on : .off
+        if let symbol { item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
         return item
+    }
+
+    @objc private func setStyle(_ sender: NSMenuItem) {
+        Settings.shared.style = sender.tag
+    }
+
+    @objc private func toggleAllSpaces() {
+        Settings.shared.allSpaces.toggle()
+    }
+
+    @objc private func toggleHints() {
+        Settings.shared.showHints.toggle()
     }
 
     @objc private func pinFocused() {

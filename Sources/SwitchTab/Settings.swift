@@ -60,6 +60,8 @@ final class Settings: ObservableObject {
     @Published var animations: Bool = Settings.load("animations", true) { didSet { save(animations, "animations") } }
     @Published var glow: Bool = Settings.load("glow", true) { didSet { save(glow, "glow") } }
 
+    @Published var showHints: Bool = Settings.load("showHints", true) { didSet { save(showHints, "showHints") } }
+
     @Published var showDockBadges: Bool = Settings.load("showDockBadges", true) { didSet { save(showDockBadges, "showDockBadges") } }
 
     // Statistics (opt-in)

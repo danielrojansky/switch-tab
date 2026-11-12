@@ -9,6 +9,9 @@ APP="build/SwitchTab.app"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/release/SwitchTab "$APP/Contents/MacOS/SwitchTab"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# App icon. Regenerate with: swift scripts/make-icon.swift
+mkdir -p "$APP/Contents/Resources"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 NAME="SwitchTab Local Signing"
 KEYCHAIN="$HOME/Library/Keychains/switchtab-signing.keychain-db"
