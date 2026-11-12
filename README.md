@@ -2,7 +2,7 @@
 
 Windows-style window switcher for macOS, with always-on-top windows. Hold Option, press Tab, see every open window with a live preview, release Option to jump to it. Inspired by [AltTab](https://alt-tab.app/).
 
-Version 0.7.0. Requires macOS 14 or later.
+Version 0.7.1. Requires macOS 14 or later.
 
 ## Features
 
@@ -67,13 +67,62 @@ Only app bundle IDs are stored, never window titles or content. Data lives in `~
 
 ## Install
 
-Needs only Xcode Command Line Tools (no full Xcode).
+Requirements: macOS 14 or later, Xcode Command Line Tools (no full Xcode), git.
+
+**1. Install the Command Line Tools** (skip if `xcode-select -p` prints a path):
+
+```bash
+xcode-select --install
+```
+
+**2. Get the code:**
+
+```bash
+git clone https://github.com/danielrojansky/switch-tab.git
+```
+
+```bash
+cd switch-tab
+```
+
+**3. Build and install:**
 
 ```bash
 ./scripts/install.sh
 ```
 
-This creates a local signing certificate (first run only), builds, copies the app to `/Applications/SwitchTab.app` and starts it. Launch at login is switched on at the first start from Applications.
+This creates a local signing certificate in its own keychain (first run only), builds a release binary, copies the app to `/Applications/SwitchTab.app` and starts it. Launch at login is switched on at the first start from Applications.
+
+**4. Grant permissions.** macOS asks on first start. In System Settings, Privacy & Security, switch on Switch Tab under Accessibility (required) and Screen Recording (previews, always on top). The Switch Tab menu and the General tab in Preferences show what is still missing and open the right pane.
+
+**5. Use it.** Hold Option and press Tab. Preferences are in the menu bar icon.
+
+### Update
+
+```bash
+git pull
+```
+
+```bash
+./scripts/install.sh
+```
+
+Permissions stay granted, because the signing certificate does not change.
+
+### Uninstall
+
+1. Quit Switch Tab from its menu bar icon (this also hands Command + Tab back to macOS).
+2. Delete `/Applications/SwitchTab.app`.
+3. Optional leftovers: `~/Library/Application Support/SwitchTab` (signing password, statistics database) and `~/Library/Keychains/switchtab-signing.keychain-db`.
+4. Remove Switch Tab from the Accessibility and Screen Recording lists in System Settings.
+
+### Build without installing
+
+```bash
+./scripts/build-app.sh
+```
+
+The app lands in `build/SwitchTab.app`. Without the signing certificate (`scripts/setup-signing.sh`) the build is ad-hoc signed and macOS asks for the permissions again after every rebuild.
 
 ## Permissions
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.1
+- Documentation: step-by-step install, update and uninstall instructions in the README.
+
 ## 0.7.0
 - Preferences redesigned: icon tab bar, compact cards in two columns, every settings tab fits without scrolling (Statistics stays a scrolling report). Permissions shown as status chips.
 - Menu bar menu: header with app icon and status, switcher style as a one-click segmented control, shorter list.
