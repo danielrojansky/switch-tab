@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.2
+- Developer docs: CLAUDE.md documents the signing setup step, names the exact Info.plist version keys and lists the debug render flags one per line.
+
 ## 0.7.1
 - Documentation: step-by-step install, update and uninstall instructions in the README.
 

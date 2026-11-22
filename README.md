@@ -2,7 +2,7 @@
 
 Windows-style window switcher for macOS, with always-on-top windows. Hold Option, press Tab, see every open window with a live preview, release Option to jump to it. Inspired by [AltTab](https://alt-tab.app/).
 
-Version 0.7.1. Requires macOS 14 or later.
+Version 0.7.2. Requires macOS 14 or later.
 
 ## Features
 
